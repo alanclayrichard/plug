@@ -1,7 +1,7 @@
 [project]
-name = "protein-alignment-benchmarks"
+name = "plug"
 version = "0.1.0"
-description = "leakage-free uniref90 training sets for protein representation-alignment benchmarks"
+description = "PLUG: Protein Leakage-free evaluation for Unbiased Generators of function — leakage-free training sets (uniref90/pdb) + functional benchmarks"
 requires-python = ">=3.10"
 # core deps: enough to download, format, and build the training set
 dependencies = [
@@ -18,4 +18,4 @@ torch = ["torch>=2.0"]
 [tool.uv]
 package = false
 
-# mmseqs2 is not pip-installable — set MMSEQS to its path, or `brew install mmseqs2`
+# mmseqs2 / foldseek are not pip-installable — set MMSEQS / FOLDSEEK to their paths, or `brew install mmseqs2 foldseek`

@@ -1,8 +1,15 @@
-# protein-alignment-benchmarks
+# PLUG
 
-build a **leakage-free** subset of uniref90 to align/train a protein sequence model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, and whatever else you want).
+**Protein Leakage-free evaluation for Unbiased Generators of function.**
 
-leakage rule: a sampled uniref90 sequence is dropped if it aligns over >80% of a **test** seq's length at >20% identity (tunable with `COV`/`MIN_ID`) — i.e. the test protein's content is present in the train seq, so training on it would leak the eval.
+build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, pdbbind/bindingdb affinity, and whatever else you want).
+
+leakage rule: a sampled candidate is dropped if it looks like any **test** protein —
+- **sequence** (`RESERVOIR=seq`, uniref90): mmseqs2 alignment over >80% of a test seq's length at >20% identity (`COV`/`MIN_ID`), so the test protein's content is present in the train seq.
+- **structure** (`RESERVOIR=struct`, pdb): foldseek TMalign at >0.5 TM-score to a test structure (`TM`), i.e. the same fold.
+- **both** (`RESERVOIR=both`): a union graph over the sequence and structure hits — a candidate is dropped if its component touches a test protein in *either* view, so a seq+struct model is safe against leakage through either lens.
+
+thresholds/params are deliberately user-defined so you can characterize generalizability as a function of how much leakage you allow.
 
 ## leakage coverage modes (`COV_MODE`)
 
@@ -20,15 +27,21 @@ to create your own leakage-free training set:
 ```
 data/download_*.sh    download a benchmark's test set            -> data/<bench>/
 format_benchmark.py   each test set -> uniform fasta             -> data/formatted/<bench>.fasta
-build_trainset.py     sample uniref90, drop leakers, repeat      -> trainset.fasta
+build_trainset.py     sample a reservoir, drop leakers, repeat   -> trainset.fasta
 datasets.py           load trainset + benchmarks as torch datasets
 ```
 
-instead of scanning all ~121M uniref90 seqs, `build_trainset.py` optionally **samples** candidates, checks just that sample against the (small) test sets with mmseqs, keeps the clean ones, and iteratively resamples until the quota is met. checking a sample against the test sets is cheap, so it's fast — and exact. uniref90 is never copied; only the sampled training set is written. The sampling strategy is currently uniform sampling over the whole uniref90 to ensure coverage of protein lengths and families but could be optionally tuned to stratify on a certain feature (e.g. sequence composition, family, fold, organism, etc.).
+instead of scanning a whole reservoir (~121M uniref90 seqs, or the whole pdb), `build_trainset.py` **reservoir-samples** a batch of candidates in one streaming pass — the reservoir is never held in memory — checks *every* sampled candidate against the (small) test sets, keeps the clean ones, and resamples until the quota is met:
+
+- **sequence scan** (`RESERVOIR=seq`): stream the uniref90 fasta, sample a batch, `mmseqs` them against the combined test fastas, and drop any that clear the identity + coverage cutoff.
+- **structure scan** (`RESERVOIR=struct`): stream the pdb directory, sample a batch of structures, `foldseek` TMalign them against the test structures, and drop any that clear the TM-score cutoff.
+- **both** (`RESERVOIR=both`): sample structures, run *both* searches on them (their sequences come straight out of the structures), and drop via a union graph — any candidate whose sequence *or* structure neighborhood reaches a test protein is removed. the result is leakage-proof for a model that sees sequence and structure together.
+
+checking a small sample against the tiny test sets is cheap and exact; the reservoir is never copied, only the sampled training set is written. sampling is uniform (to cover lengths and families) but could be stratified on a feature (composition, family, fold, organism, …).
 
 ## setup
 
-uniref90 is downloaded separately (https://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/) — point `.env` at it (and at the mmseqs binary). copy `.env.example` to `.env` and edit; `config.py` auto-loads it. then:
+the reservoirs are downloaded separately — point `.env` at them (and at the search binaries). copy `.env.example` to `.env` and edit; `config.py` auto-loads it. then:
 
 ```bash
 uv sync                                  # create .venv with core deps (add --extra torch for datasets.py)
@@ -36,16 +49,20 @@ source .venv/bin/activate                # then plain `python ...` uses the venv
 for s in data/download_*.sh; do sh "$s"; done   # fetch every benchmark's test set
 ```
 
-set `MMSEQS` to its path (or `brew install mmseqs2`). for the gpu check, point `MMSEQS` at a gpu build and set `GPU=1`.
+- **sequence reservoir**: uniref90 (https://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/), point `UNIREF_FASTA` at it. needs mmseqs2 — set `MMSEQS` (or `brew install mmseqs2`).
+- **structure reservoir**: a directory of pdb/mmcif files — `sh data/download_pdb.sh` mirrors the whole pdb into `data/pdb`, point `PDB_DIR` at it. needs foldseek — grab the static build for your platform from https://github.com/steineggerlab/foldseek/releases (`foldseek-osx-universal.tar.gz`, `foldseek-linux-avx2.tar.gz`, `foldseek-linux-arm64.tar.gz`, or `foldseek-linux-gpu.tar.gz`), untar it, and point `FOLDSEEK` at the extracted `bin/foldseek`. structural leakage also needs the test-set structures in `STRUCT_TESTS` (a dir of pdb/mmcif files).
+- for the gpu check, point `MMSEQS`/`FOLDSEEK` at gpu builds and set `GPU=1`.
 
 ## run
 
 ```bash
 python src/format_benchmark.py           # all benchmarks -> data/formatted/*.fasta
-python src/build_trainset.py             # sample uniref90, drop leakers, repeat -> trainset.fasta
+RESERVOIR=seq   python src/build_trainset.py   # sample uniref90, drop sequence leakers -> trainset.fasta
+RESERVOIR=struct python src/build_trainset.py  # sample the pdb, drop TM-score leakers
+RESERVOIR=both  python src/build_trainset.py   # sample the pdb, drop union (seq ∪ struct) leakers
 ```
 
-`.env` controls it: `QUOTA` is how many leakage-free seqs to collect for the training set, `OVERSAMPLE` how much extra to draw each round to cover dropped leakers, `MIN_LEN`/`MAX_LEN` bound the sampled protein length (drops fragments + giant non-physiological seqs), `GPU=1` runs the check on a cuda gpu.
+`.env` controls it: `RESERVOIR` picks seq/struct/both, `QUOTA` is how many leakage-free seqs to collect, `OVERSAMPLE` how much extra to draw each round to cover dropped leakers, `MIN_LEN`/`MAX_LEN` bound the sampled protein length (drops fragments + giant non-physiological seqs), `MIN_ID`/`TM` are the sequence/structure leakage thresholds, `GPU=1` runs the check on a cuda gpu.
 
 ## use
 
@@ -81,19 +98,19 @@ bdb   = BindingdbDataset()                  # {sequence, uniprot, target_name, o
 | pdbbind | LP-PDBBind protein–ligand affinity (test split) | 2,644 |
 | bindingdb | bindingdb articles, protein–ligand affinity (single-chain targets) | 2,157 |
 
-sample pool: uniref90, ~121M sequences.
+reservoirs: uniref90 (~121M sequences) and the pdb (~all deposited structures, as a directory of mmcif files).
 
 ## adding a benchmark
 
 1. add `data/download_<name>.sh` to fetch its test set.
 2. add an adapter to `ADAPTERS` in `src/format_benchmark.py` (name -> fn yielding its test seqs),
    then `python src/format_benchmark.py <name>`.
-3. `python src/build_trainset.py` — the sample is checked against every `data/formatted/*.fasta`,
-   so the new benchmark is protected automatically.
+3. `python src/build_trainset.py` — the sample is checked against every `data/formatted/*.fasta`
+   (and, for `RESERVOIR=struct|both`, every structure in `STRUCT_TESTS`), so the new benchmark is
+   protected automatically.
 
 
 ## TODO:
-- add other sampling strategies for train set  
-- add more benchmarks
-- add structual leakge checking with TM-align scoring when structures are available
-- add script to get uniprot training entries with qfit reanalyzed structures 
+- add other sampling strategies for train set (stratify on length/family/fold/organism/…)
+- add more benchmarks (e.g. atlas RMSF for conformational dynamics)
+- fetch each benchmark's test structures automatically for the foldseek check

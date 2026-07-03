@@ -14,15 +14,19 @@ if _env.exists():
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), os.path.expandvars(v.strip().strip("\"'")))
 
-# uniref90 to sample from + the mmseqs binary (point at a gpu build to use GPU=1)
-uniref_fa = Path(os.environ.get("UNIREF_FASTA", repo / "uniref" / "uniref90.fasta.gz"))
+# reservoirs to sample + the search binaries (point at gpu builds to use GPU=1)
+uniref_fa = Path(os.environ.get("UNIREF_FASTA", repo / "uniref" / "uniref90.fasta.gz"))  # sequence reservoir (gzipped fasta)
+pdb_dir   = Path(os.environ.get("PDB_DIR", data / "pdb"))               # structure reservoir (directory of pdb/mmcif files, see download_pdb.sh)
 mmseqs    = os.environ.get("MMSEQS", "mmseqs")
-gpu       = os.environ.get("GPU", "")             # GPU=1 (+ a gpu mmseqs build) runs the check on cuda
+foldseek  = os.environ.get("FOLDSEEK", "foldseek")
+gpu       = os.environ.get("GPU", "")             # GPU=1 (+ gpu mmseqs/foldseek builds) runs the check on cuda
+reservoir_kind = os.environ.get("RESERVOIR", "seq")   # seq (uniref90) | struct (pdb) | both (union graph)
 
 # repo inputs / outputs
-formatted = Path(os.environ.get("FORMATTED_DIR", data / "formatted"))   # formatted test-set fastas
-trainset  = Path(os.environ.get("TRAINSET", repo / "trainset.fasta"))   # final leakage-free set
-work      = Path(os.environ.get("WORK", repo / "work"))                 # mmseqs scratch (ephemeral)
+formatted    = Path(os.environ.get("FORMATTED_DIR", data / "formatted"))   # formatted test-set fastas
+struct_tests = Path(os.environ.get("STRUCT_TESTS", data / "structs"))      # test-set structures for the foldseek check
+trainset     = Path(os.environ.get("TRAINSET", repo / "trainset.fasta"))   # final leakage-free set
+work         = Path(os.environ.get("WORK", repo / "work"))                 # mmseqs/foldseek scratch (ephemeral)
 
 # leakage rule + mmseqs search
 threads  = os.environ.get("THREADS", "8")
@@ -30,7 +34,8 @@ sens     = os.environ.get("SENS", "7.5")            # mmseqs sensitivity
 evalue   = os.environ.get("EVALUE", "1e-3")         # mmseqs e-value cutoff
 cov      = os.environ.get("COV", "0.8")             # min coverage to count as leakage
 cov_mode = os.environ.get("COV_MODE", "1")          # 1 = cover the test seq (catches test-as-subdomain), 0 = both, 2 = train seq
-min_id   = float(os.environ.get("MIN_ID", "0.2"))   # >this identity to a test seq counts as leakage
+min_id   = float(os.environ.get("MIN_ID", "0.2"))   # >this identity to a test seq counts as sequence leakage
+tm       = float(os.environ.get("TM", "0.5"))       # >this foldseek TM-score to a test structure counts as structural leakage
 
 # sampling: collect this many leakage-free seqs, oversampling each round to cover dropped leakers
 quota      = int(os.environ.get("QUOTA", "1000000"))
