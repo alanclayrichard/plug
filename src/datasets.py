@@ -1,5 +1,5 @@
 # torch datasets: the leakage-free training set + the functional eval benchmarks
-# (ddg, dms, go, allobench, ppi, passerrank).
+# (ddg, dms, go, allobench, ppi, passerrank, pdbbind, bindingdb, atlas).
 import ast, csv, sys
 from pathlib import Path
 import pandas as pd
@@ -200,6 +200,28 @@ class PdbbindDataset(Dataset):
                 self.items.append({"sequence": s, "pdb": r.get("", ""),
                     "value": float(v), "smiles": (r.get("smiles") or "").strip(),
                     "split": r.get("new_split", "")})
+
+    def __len__(self): return len(self.items)
+
+    def __getitem__(self, i): return self.items[i]
+
+
+class AtlasDataset(Dataset):
+    # atlas MD per-residue flexibility (conformational dynamics), one PDB chain per simulation.
+    # item: sequence, pdb_chain, rmsf (mean over 3 replicas, Å), rmsf_replicas (the 3 per-residue lists).
+    def __init__(self, data_dir=repo / "data" / "atlas"):
+        self.items = []
+        for p in sorted((Path(data_dir) / "rmsf").glob("*.tsv")):
+            seq, reps = [], ([], [], [])
+            with open(p, newline="") as f:
+                for r in csv.DictReader(f, delimiter="\t"):
+                    aa = (r.get("seq") or "").strip()
+                    if not aa: continue
+                    seq.append(aa)
+                    for k in range(3): reps[k].append(float(r[f"RMSF_R{k+1}"]))
+            if not seq: continue
+            self.items.append({"sequence": "".join(seq).upper(), "pdb_chain": p.stem,
+                "rmsf": [sum(v) / 3 for v in zip(*reps)], "rmsf_replicas": [list(v) for v in reps]})
 
     def __len__(self): return len(self.items)
 

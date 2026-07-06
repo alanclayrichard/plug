@@ -60,6 +60,13 @@ def pdbbind():  # LP-PDBBind protein-ligand binding affinity, leak-proof TEST sp
             if s: yield s
 
 
+def atlas():  # atlas MD sim proteins: each chain's sequence (the seq column of its per-residue RMSF.tsv)
+    for p in sorted((c.data / "atlas" / "rmsf").glob("*.tsv")):
+        with open(p, newline="") as f:
+            seq = "".join((r.get("seq") or "").strip() for r in csv.DictReader(f, delimiter="\t"))
+        if seq: yield seq.upper()
+
+
 def bindingdb():  # BindingDB articles, single-chain target sequences (multichain dropped)
     chains = "Number of Protein Chains in Target (>1 implies a multichain complex)"
     with open(c.data / "bindingdb" / "BindingDB_BindingDB_Articles.tsv", newline="") as f:
@@ -71,7 +78,7 @@ def bindingdb():  # BindingDB articles, single-chain target sequences (multichai
 
 # name -> test-seq iterator
 ADAPTERS = {"ddg": ddg, "dms": dms, "go": go, "allobench": allobench, "ppi": ppi,
-            "passerrank": passerrank, "pdbbind": pdbbind, "bindingdb": bindingdb}
+            "passerrank": passerrank, "pdbbind": pdbbind, "bindingdb": bindingdb, "atlas": atlas}
 
 
 def write(name):  # dedup + write <formatted>/<name>.fasta, return (path, count)

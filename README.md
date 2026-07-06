@@ -2,7 +2,7 @@
 
 **Protein Leakage-free evaluation for Unbiased Generators of function.**
 
-build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, pdbbind/bindingdb affinity, and whatever else you want).
+build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
 
 leakage rule: a sampled candidate is dropped if it looks like any **test** protein —
 - **sequence** (`RESERVOIR=seq`, uniref90): mmseqs2 alignment over >80% of a test seq's length at >20% identity (`COV`/`MIN_ID`), so the test protein's content is present in the train seq.
@@ -72,7 +72,7 @@ needs torch (`uv sync --extra torch`), with the venv activated:
 import sys; sys.path.insert(0, "src")
 from datasets import (TrainSet, DdgDataset, DmsDataset, GoDataset,
                       AllobenchDataset, PpiDataset, PasserrankDataset,
-                      PdbbindDataset, BindingdbDataset)
+                      PdbbindDataset, BindingdbDataset, AtlasDataset)
 
 train = TrainSet()                         # {sequence, id} — the leakage-free align set (id = uniprot code)
 ddg   = DdgDataset(dataset="megascale")    # {sequence, mutation, ddg, pdb, dataset}
@@ -83,6 +83,7 @@ ppi   = PpiDataset(level=0)                 # {sequence_a, sequence_b, id_a, id_
 pr    = PasserrankDataset()                 # {sequence, uniprot, gene, organism, pdb, allosteric_site}
 pdb   = PdbbindDataset()                    # {sequence, pdb, value, smiles, split} — LP-PDBBind affinity, test split
 bdb   = BindingdbDataset()                  # {sequence, uniprot, target_name, organism, smiles, measure, value, relation}
+atlas = AtlasDataset()                      # {sequence, pdb_chain, rmsf, rmsf_replicas} — per-residue MD flexibility (Å)
 ```
 
 ## datasets
@@ -97,6 +98,7 @@ bdb   = BindingdbDataset()                  # {sequence, uniprot, target_name, o
 | passerrank | passerrank allosteric set (ASD) | 333 |
 | pdbbind | LP-PDBBind protein–ligand affinity (test split) | 2,644 |
 | bindingdb | bindingdb articles, protein–ligand affinity (single-chain targets) | 2,157 |
+| atlas | atlas MD per-residue RMSF (conformational dynamics) | 1,693 |
 
 reservoirs: uniref90 (~121M sequences) and the pdb (~all deposited structures, as a directory of mmcif files).
 
@@ -112,5 +114,5 @@ reservoirs: uniref90 (~121M sequences) and the pdb (~all deposited structures, a
 
 ## TODO:
 - add other sampling strategies for train set (stratify on length/family/fold/organism/…)
-- add more benchmarks (e.g. atlas RMSF for conformational dynamics)
+- add more benchmarks (more conformational/functional signals)
 - fetch each benchmark's test structures automatically for the foldseek check
