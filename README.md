@@ -2,6 +2,8 @@
 
 **Protein Leakage-free evaluation for Unbiased Generators of function.**
 
+![PLUG overview](plug.png)
+
 build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
 
 leakage rule: a sampled candidate is dropped if it looks like any **test** protein —
@@ -101,6 +103,13 @@ atlas = AtlasDataset()                      # {sequence, pdb_chain, rmsf, rmsf_r
 | atlas | atlas MD per-residue RMSF (conformational dynamics) | 1,693 |
 
 reservoirs: uniref90 (~121M sequences) and the pdb (~all deposited structures, as a directory of mmcif files).
+
+## licenses
+
+while this repo doesn't distribute actual data, it is important to review
+[`licenses/`](licenses/) for the full texts and an attribution index. all sources are freely redistributable
+with attribution **except atlas (CC BY-NC) and lp-pdbbind (research/non-profit only)**, which are
+non-commercial. the generated trainset (uniref90 CC BY + pdb CC0) is clean for any use, with attribution.
 
 ## adding a benchmark
 
