@@ -47,6 +47,17 @@ def ppi():  # human ppi gold-standard: sequences of every protein in the test pa
         if a in accs and s: yield s.upper()
 
 
+def shs27k():  # STRING human PPI subset (GNN-PPI): sequences of every protein in the interaction network
+    d = c.data / "shs27k"
+    with open(d / "protein.actions.SHS27k.STRING.txt") as f:
+        next(f)  # header row
+        accs = {a for line in f for a in line.split("\t")[:2]}
+    with open(d / "protein.SHS27k.sequences.dictionary.tsv") as f:
+        for line in f:
+            acc, _, seq = line.partition("\t")
+            if acc in accs and seq.strip(): yield seq.strip().upper()
+
+
 def passerrank():  # passerrank allosteric proteins (uniprot seqs fetched from asd accessions)
     for _a, s in c.iter_fasta(c.data / "passerrank" / "passerrank.fasta"):
         if s: yield s.upper()
@@ -78,7 +89,8 @@ def bindingdb():  # BindingDB articles, single-chain target sequences (multichai
 
 # name -> test-seq iterator
 ADAPTERS = {"ddg": ddg, "dms": dms, "go": go, "allobench": allobench, "ppi": ppi,
-            "passerrank": passerrank, "pdbbind": pdbbind, "bindingdb": bindingdb, "atlas": atlas}
+            "shs27k": shs27k, "passerrank": passerrank, "pdbbind": pdbbind,
+            "bindingdb": bindingdb, "atlas": atlas}
 
 
 def write(name):  # dedup + write <formatted>/<name>.fasta, return (path, count)

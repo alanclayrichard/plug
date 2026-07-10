@@ -73,7 +73,7 @@ needs torch (`uv sync --extra torch`), with the venv activated:
 ```python
 import sys; sys.path.insert(0, "src")
 from datasets import (TrainSet, DdgDataset, DmsDataset, GoDataset,
-                      AllobenchDataset, PpiDataset, PasserrankDataset,
+                      AllobenchDataset, PpiDataset, Shs27kDataset, PasserrankDataset,
                       PdbbindDataset, BindingdbDataset, AtlasDataset)
 
 train = TrainSet()                         # {sequence, id} — the leakage-free align set (id = uniprot code)
@@ -82,6 +82,7 @@ dms   = DmsDataset(assay="Binding")        # {sequence, mutation, score, assay, 
 go    = GoDataset()                         # {sequence, protein_id, organism, go_bp, go_mf, go_cc}
 allo  = AllobenchDataset()                  # {sequence, target_id, gene, organism, uniprot, allosteric_site, active_site}
 ppi   = PpiDataset(level=0)                 # {sequence_a, sequence_b, id_a, id_b, label, level}
+shs   = Shs27kDataset(mode="binding")      # {sequence_a, sequence_b, id_a, id_b, types, score} — STRING PPI subset
 pr    = PasserrankDataset()                 # {sequence, uniprot, gene, organism, pdb, allosteric_site}
 pdb   = PdbbindDataset()                    # {sequence, pdb, value, smiles, split} — LP-PDBBind affinity, test split
 bdb   = BindingdbDataset()                  # {sequence, uniprot, target_name, organism, smiles, measure, value, relation}
@@ -97,6 +98,7 @@ atlas = AtlasDataset()                      # {sequence, pdb_chain, rmsf, rmsf_r
 | go  | bioreason-pro (cafa5 temporal holdout) | 8,528 |
 | allobench | allobench allosteric/active sites | 425 |
 | ppi | human ppi gold standard (figshare) | 11,019 |
+| shs27k | STRING human PPI subset (GNN-PPI / PIPR) | 1,690 |
 | passerrank | passerrank allosteric set (ASD) | 333 |
 | pdbbind | LP-PDBBind protein–ligand affinity (test split) | 2,644 |
 | bindingdb | bindingdb articles, protein–ligand affinity (single-chain targets) | 2,157 |

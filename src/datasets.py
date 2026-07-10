@@ -164,6 +164,40 @@ class PpiDataset(Dataset):
     def __getitem__(self, i): return self.items[i]
 
 
+class Shs27kDataset(Dataset):
+    # SHS27k: STRING H. sapiens PPI subset (GNN-PPI, Lv et al. 2021; subset recipe from PIPR, Chen et al.
+    # 2019). 1,690 proteins <40% mutual identity, 7,624 undirected pairs. item: sequence_a, sequence_b,
+    # id_a, id_b, types, score. types = the STRING interaction modes present for the pair (multi-label:
+    # reaction|binding|catalysis|activation|inhibition|ptmod|expression); score = max STRING confidence
+    # (0-1000). pass mode to keep only pairs carrying that interaction type.
+    MODES = ("reaction", "binding", "catalysis", "activation", "inhibition", "ptmod", "expression")
+
+    def __init__(self, mode=None, data_dir=repo / "data" / "shs27k"):
+        data_dir = Path(data_dir)
+        seqs = {}
+        with open(data_dir / "protein.SHS27k.sequences.dictionary.tsv") as f:
+            for line in f:
+                acc, _, s = line.partition("\t")
+                if s.strip(): seqs[acc] = s.strip().upper()
+        pairs = {}  # (id_a, id_b) sorted -> {types, score}
+        with open(data_dir / "protein.actions.SHS27k.STRING.txt", newline="") as f:
+            for r in csv.DictReader(f, delimiter="\t"):
+                a, b = r["item_id_a"], r["item_id_b"]
+                if a not in seqs or b not in seqs: continue
+                e = pairs.setdefault(tuple(sorted((a, b))), {"types": set(), "score": 0})
+                if r["mode"]: e["types"].add(r["mode"])
+                e["score"] = max(e["score"], int(r["score"]) if r["score"].strip() else 0)
+        self.items = []
+        for (a, b), e in pairs.items():
+            if mode and mode not in e["types"]: continue
+            self.items.append({"sequence_a": seqs[a], "sequence_b": seqs[b], "id_a": a, "id_b": b,
+                "types": sorted(e["types"]), "score": e["score"]})
+
+    def __len__(self): return len(self.items)
+
+    def __getitem__(self, i): return self.items[i]
+
+
 class PasserrankDataset(Dataset):
     # passerrank allosteric proteins (asd). item: sequence, uniprot, gene, organism, pdb, allosteric_site.
     def __init__(self, data_dir=repo / "data" / "passerrank"):

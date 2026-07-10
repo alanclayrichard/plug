@@ -21,3 +21,5 @@ work/
 trainset.fasta
 
 .actlignore
+
+eval/
