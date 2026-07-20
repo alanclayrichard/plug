@@ -1,5 +1,5 @@
 # torch datasets: the leakage-free training set + the functional eval benchmarks
-# (ddg, dms, go, allobench, ppi, passerrank, pdbbind, bindingdb, atlas).
+# (ddg, dms, go, allobench, ppi, shs27k, passerrank, lp-pdbbind, bindingdb, atlas).
 import ast, csv, sys
 from pathlib import Path
 import pandas as pd
@@ -55,7 +55,7 @@ class DdgDataset(Dataset):
     @staticmethod
     def _fireprot(r):
         if not (r.get("ddG") or "").strip(): return None
-        return {"sequence": r["pdb_sequence"].strip().upper(),
+        return {"sequence": r["sequence"].strip().upper(),
                 "mutation": f"{r['wild_type']}{r['position']}{r['mutation']}",
                 "ddg": float(r["ddG"]), "pdb": r.get("pdb_id_corrected", "")}
 
@@ -219,11 +219,11 @@ class PasserrankDataset(Dataset):
     def __getitem__(self, i): return self.items[i]
 
 
-class PdbbindDataset(Dataset):
+class LpPdbbindDataset(Dataset):
     # LP-PDBBind protein-ligand binding affinity (leak-proof split).
     # item: sequence, pdb, value (pKd/pKi affinity), smiles, split.
     # pass split (train|val|test) to filter; default test (the eval split).
-    def __init__(self, split="test", data_dir=repo / "data" / "pdbbind"):
+    def __init__(self, split="test", data_dir=repo / "data" / "lp-pdbbind"):
         self.items = []
         with open(Path(data_dir) / "LP_PDBBind.csv", newline="") as f:
             for r in csv.DictReader(f):

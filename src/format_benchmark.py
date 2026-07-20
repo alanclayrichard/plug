@@ -63,8 +63,8 @@ def passerrank():  # passerrank allosteric proteins (uniprot seqs fetched from a
         if s: yield s.upper()
 
 
-def pdbbind():  # LP-PDBBind protein-ligand binding affinity, leak-proof TEST split only
-    with open(c.data / "pdbbind" / "LP_PDBBind.csv", newline="") as f:
+def lp_pdbbind():  # LP-PDBBind protein-ligand binding affinity, leak-proof TEST split only
+    with open(c.data / "lp-pdbbind" / "LP_PDBBind.csv", newline="") as f:
         for r in csv.DictReader(f):
             if r.get("new_split") != "test": continue
             s = (r.get("seq") or "").strip().upper()
@@ -89,7 +89,7 @@ def bindingdb():  # BindingDB articles, single-chain target sequences (multichai
 
 # name -> test-seq iterator
 ADAPTERS = {"ddg": ddg, "dms": dms, "go": go, "allobench": allobench, "ppi": ppi,
-            "shs27k": shs27k, "passerrank": passerrank, "pdbbind": pdbbind,
+            "shs27k": shs27k, "passerrank": passerrank, "lp-pdbbind": lp_pdbbind,
             "bindingdb": bindingdb, "atlas": atlas}
 
 

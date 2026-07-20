@@ -4,7 +4,7 @@
 
 ![PLUG overview](plug.png)
 
-build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
+build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on functional benchmarks (thermompnn ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI, lp-pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
 
 leakage rule: a sampled candidate is dropped if it looks like any **test** protein —
 - **sequence** (`RESERVOIR=seq`, uniref90): mmseqs2 alignment over >80% of a test seq's length at >20% identity (`COV`/`MIN_ID`), so the test protein's content is present in the train seq.
@@ -74,7 +74,7 @@ needs torch (`uv sync --extra torch`), with the venv activated:
 import sys; sys.path.insert(0, "src")
 from datasets import (TrainSet, DdgDataset, DmsDataset, GoDataset,
                       AllobenchDataset, PpiDataset, Shs27kDataset, PasserrankDataset,
-                      PdbbindDataset, BindingdbDataset, AtlasDataset)
+                      LpPdbbindDataset, BindingdbDataset, AtlasDataset)
 
 train = TrainSet()                         # {sequence, id} — the leakage-free align set (id = uniprot code)
 ddg   = DdgDataset(dataset="megascale")    # {sequence, mutation, ddg, pdb, dataset}
@@ -84,7 +84,7 @@ allo  = AllobenchDataset()                  # {sequence, target_id, gene, organi
 ppi   = PpiDataset(level=0)                 # {sequence_a, sequence_b, id_a, id_b, label, level}
 shs   = Shs27kDataset(mode="binding")      # {sequence_a, sequence_b, id_a, id_b, types, score} — STRING PPI subset
 pr    = PasserrankDataset()                 # {sequence, uniprot, gene, organism, pdb, allosteric_site}
-pdb   = PdbbindDataset()                    # {sequence, pdb, value, smiles, split} — LP-PDBBind affinity, test split
+lppdb = LpPdbbindDataset()                  # {sequence, pdb, value, smiles, split} — LP-PDBBind affinity, test split
 bdb   = BindingdbDataset()                  # {sequence, uniprot, target_name, organism, smiles, measure, value, relation}
 atlas = AtlasDataset()                      # {sequence, pdb_chain, rmsf, rmsf_replicas} — per-residue MD flexibility (Å)
 ```
@@ -100,7 +100,7 @@ atlas = AtlasDataset()                      # {sequence, pdb_chain, rmsf, rmsf_r
 | ppi | human ppi gold standard (figshare) | 11,019 |
 | shs27k | STRING human PPI subset (GNN-PPI / PIPR) | 1,690 |
 | passerrank | passerrank allosteric set (ASD) | 333 |
-| pdbbind | LP-PDBBind protein–ligand affinity (test split) | 2,644 |
+| lp-pdbbind | LP-PDBBind protein–ligand affinity (test split) | 2,644 |
 | bindingdb | bindingdb articles, protein–ligand affinity (single-chain targets) | 2,157 |
 | atlas | atlas MD per-residue RMSF (conformational dynamics) | 1,693 |
 

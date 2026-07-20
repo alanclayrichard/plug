@@ -21,7 +21,7 @@ terms; the full texts are in this directory.
 | shs27k | `download_shs27k.sh` | github lvguofeng/GNN_PPI (STRING v10.5 subset) | CC BY 4.0 (see note) | [CC-BY-4.0.txt](CC-BY-4.0.txt) | yes |
 | passerrank | `download_passerrank.sh` | ASD table + UniProt seqs | CC BY 4.0 (see note) | [CC-BY-4.0.txt](CC-BY-4.0.txt) | yes |
 | bindingdb | `download_bindb.sh` | bindingdb.org (Articles subset) | CC BY 4.0 | [CC-BY-4.0.txt](CC-BY-4.0.txt) | yes |
-| **pdbbind** (lp-pdbbind) | `download_pdbbind.sh` | github THGLab/LP-PDBBind | **UC Regents — research / non-profit only** | [LP-PDBBind-LICENSE.txt](LP-PDBBind-LICENSE.txt) | no |
+| **lp-pdbbind** | `download_lp_pdbbind.sh` | github THGLab/LP-PDBBind | **UC Regents — research / non-profit only** | [LP-PDBBind-LICENSE.txt](LP-PDBBind-LICENSE.txt) | no |
 | **atlas** | `download_atlas.sh` | dsimb.inserm.fr | **CC BY-NC 4.0** | [CC-BY-NC-4.0.txt](CC-BY-NC-4.0.txt) | no |
 
 ## watch-outs

@@ -23,3 +23,5 @@ trainset.fasta
 .actlignore
 
 eval/
+results/
+
