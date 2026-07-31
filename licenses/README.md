@@ -13,7 +13,8 @@ terms; the full texts are in this directory.
 |---|---|---|---|---|---|
 | uniref90 (seq reservoir) | — (`UNIREF_FASTA`) | UniProt | CC BY 4.0 | [CC-BY-4.0.txt](CC-BY-4.0.txt) | yes |
 | pdb (struct reservoir) | `download_pdb.sh` | RCSB / wwPDB | CC0 1.0 | [CC0-1.0.txt](CC0-1.0.txt) | yes |
-| ddg (thermompnn) | `download_ddg.sh` | github Kuhlman-Lab/ThermoMPNN | MIT | [MIT-ThermoMPNN.txt](MIT-ThermoMPNN.txt) | yes |
+| megascale (thermompnn) | `download_megascale.sh` | github Kuhlman-Lab/ThermoMPNN | MIT | [MIT-ThermoMPNN.txt](MIT-ThermoMPNN.txt) | yes |
+| fireprot (thermompnn) | `download_fireprot.sh` | github Kuhlman-Lab/ThermoMPNN | MIT | [MIT-ThermoMPNN.txt](MIT-ThermoMPNN.txt) | yes |
 | dms (proteingym) | `download_proteingym.sh` | github OATML-Markslab/ProteinGym | MIT (data: cite source assays) | [MIT-ProteinGym.txt](MIT-ProteinGym.txt) | yes |
 | go (bioreason-pro) | `download_bioreason_go.sh` | hf wanglab/bioreason-pro-test-data | Apache 2.0 | [Apache-2.0.txt](Apache-2.0.txt) | yes |
 | allobench | `download_allobench.sh` | github djmaity/allobench | MIT (data ex-ASD, CC BY) | [MIT-allobench.txt](MIT-allobench.txt) | yes |
