@@ -2,19 +2,23 @@
 # paper used. one item per allosteric site entry. ships no split of its own — the raw
 # asd table is what gets downloaded, not the paper's own train/test.
 import csv
+import re
 
 from . import Benchmark
 from .. import config as c
+from ..sifts import THREE, sites
 
 
-# "Chain A:PRO150,GLN151; Chain B:ASP6" -> ["A:PRO150", "A:GLN151", "B:ASP6"]
+# "Chain A:PRO150,GLN151; Chain B:ASP6" -> [("A","P",150), ("A","Q",151), ("B","D",6)]
 def site(s):
     out = []
     for part in (s or "").split(";"):
         if ":" not in part: continue
         chain, residues = part.split(":", 1)
         ch = chain.replace("Chain", "").strip()
-        out += [f"{ch}:{r.strip()}" for r in residues.split(",") if r.strip()]
+        for res in residues.split(","):
+            m = re.match(r"^([A-Z]{3})(-?\d+)", res.strip())
+            if m and m.group(1) in THREE: out.append((ch, THREE[m.group(1)], int(m.group(2))))
     return out
 
 
@@ -33,11 +37,14 @@ class Passerrank(Benchmark):
                 acc = (r.get("pdb_uniprot") or "").strip()
                 # skip an entry unless its sequence was fetched from uniprot
                 if acc not in seqs: continue
+                pdb = r.get("allosteric_pdb", "")
                 yield {"sequence": seqs[acc], "uniprot": acc,
                        "gene": r.get("target_gene", ""),
                        "organism": r.get("organism", ""),
-                       "pdb": r.get("allosteric_pdb", ""),
-                       "allosteric_site": site(r.get("allosteric_site_residue", ""))}
+                       "pdb": pdb,
+                       # the residues making up the site, counted along the sequence above
+                       "allosteric_site": sites(site(r.get("allosteric_site_residue", "")),
+                                                pdb, acc, seqs[acc])}
 
     # the fasta is keyed by accession, pulled out of the uniprot header
     @classmethod

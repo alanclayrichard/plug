@@ -1,5 +1,6 @@
-# gene ontology function prediction, the bioreason-pro test set built from cafa5. the
-# proteins were held back by date rather than by similarity. ships no split of its own.
+# cafa5 function prediction, as packaged by bioreason-pro. the labels are gene ontology
+# terms; the proteins were held back by date rather than by similarity. ships no split
+# of its own.
 import ast
 
 import pandas as pd
@@ -14,15 +15,15 @@ def terms(v):
     return list(v) if hasattr(v, "__len__") else []
 
 
-class Go(Benchmark):
-    name = "go"
+class Cafa5(Benchmark):
+    name = "cafa5"
     # every item is about one protein
     key = "protein_id"
     published = ()
 
     @classmethod
     def rows(cls):
-        path = c.data / "bioreason_go" / "test" / "data" / "test-00000-of-00001.parquet"
+        path = c.data / "cafa5" / "test" / "data" / "test-00000-of-00001.parquet"
         for r in pd.read_parquet(path).itertuples():
             yield {"sequence": str(r.sequence).strip().upper(),
                    "protein_id": r.protein_id,

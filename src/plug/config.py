@@ -65,6 +65,9 @@ seed       = int(os.environ.get("SEED", "0"))
 # where homology splits are saved
 splits = Path(os.environ.get("SPLITS_DIR", data / "splits"))
 
+# sifts table for turning pdb residue numbers into uniprot ones (see download_sifts.sh)
+sifts = Path(os.environ.get("SIFTS", data / "sifts" / "uniprot_segments_observed.csv.gz"))
+
 # create a tag for thresholds for caching homology splits 
 def split_tag(): return f"id{int(min_id * 100)}_cov{int(float(cov) * 100)}"
 

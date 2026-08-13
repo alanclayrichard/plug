@@ -10,3 +10,5 @@ awk -F'\t' 'NR>1 && $4 ~ /^[A-Z0-9]+$/ {print $4}' "$d/ASD_Release_201909_AS.txt
 while read -r acc; do
   curl -fsSL "https://rest.uniprot.org/uniprotkb/$acc.fasta" >> "$d/passerrank.fasta" || true
 done < "$d/accessions.txt"
+# its site residues are numbered like the pdb file, so we need sifts to renumber them
+sh "$(dirname "$0")/download_sifts.sh"

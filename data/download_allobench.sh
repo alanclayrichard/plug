@@ -5,3 +5,5 @@ set -e
 d="$(dirname "$0")/allobench"
 mkdir -p "$d"
 curl -fsSL https://raw.githubusercontent.com/djmaity/allobench/HEAD/AlloBench.csv -o "$d/AlloBench.csv"
+# its site residues are numbered like the pdb file, so we need sifts to renumber them
+sh "$(dirname "$0")/download_sifts.sh"

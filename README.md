@@ -4,7 +4,7 @@
 
 ![PLUG overview](plug.png)
 
-build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on mutliple functional benchmarks (megascale + fireprot ddG, proteingym dms fitness, bioreason-pro GO function, allobench + passerrank allosteric sites, human PPI + string, lp-pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
+build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on mutliple functional benchmarks (megascale + fireprot ddG, proteingym dms fitness, cafa5 GO function, allobench + passerrank allosteric sites, human PPI + string, lp-pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
 
 default leakage rule: a sampled candidate is dropped if it looks like any **test** protein —
 - **sequence** (`RESERVOIR=seq`, uniref90): mmseqs2 alignment over >80% of a test seq's length at >20% identity (`COV`/`MIN_ID`), so the test protein's content is present in the train seq. Run bidirectionally (union of mode 1 and 2) so that subdomains are found.
@@ -81,8 +81,8 @@ train = Trainset.from_fasta()         # {sequence, id} — the leakage-free alig
 mega  = Megascale()                   # {sequence, mutation, ddg, pdb, split} — megascale ddG
 fire  = Fireprot()                    # {sequence, mutation, ddg, pdb, split} — fireprot ddG
 dms   = Dms(assay="Binding")          # {sequence, mutation, score, assay, dms_id, uniprot, split}
-go    = Go()                          # {sequence, protein_id, organism, go_bp, go_mf, go_cc, split}
-allo  = Allobench()                   # {sequence, target_id, gene, organism, uniprot, allosteric_site, active_site, split}
+cafa5 = Cafa5()                       # {sequence, protein_id, organism, go_bp, go_mf, go_cc, split}
+allo  = Allobench()                   # {sequence, target_id, gene, organism, uniprot, pdb, allosteric_site, active_site, split}
 ppi   = Ppi()                         # {sequence_a, sequence_b, id_a, id_b, label, split} — human ppi
 shs   = Shs27k(mode="binding")        # {sequence_a, sequence_b, id_a, id_b, types, score, split} — STRING PPI subset
 pr    = Passerrank()                  # {sequence, uniprot, gene, organism, pdb, allosteric_site, split}
@@ -90,6 +90,8 @@ lppdb = LpPdbbind()                   # {sequence, pdb, value, smiles, split} �
 bdb   = Bindingdb()                   # {sequence, uniprot, target_name, organism, smiles, measure, value, relation, split}
 atlas = Atlas()                       # {sequence, pdb_chain, rmsf, rmsf_replicas, split} — per-residue MD flexibility (Å)
 ```
+
+every residue number in every benchmark — mutation positions, allosteric sites, active sites — counts along the `sequence` sitting next to it, starting at 1, and every per-residue list (atlas rmsf) is exactly as long as that sequence. the allosteric benchmarks label their sites the way the pdb file does, so [`sifts.py`](src/plug/sifts.py) renumbers them on load and keeps only the ones that land on the residue the label named; the few it can't place are dropped rather than guessed. that needs `data/download_sifts.sh`, which the two download scripts already call.
 
 every one of them takes `split=` and `how=`. the four that ship a split default to its **test** split; the other seven default to the **whole** benchmark (there is nothing to hold back until you split it yourself). see [benchmark splits](#benchmark-splits). `REGISTRY` maps each name to its class, for looping over all of them.
 
@@ -125,7 +127,7 @@ unique sequences per benchmark — the whole thing, every published split includ
 | megascale | megascale ddG (tsuboyama 2023, thermompnn split) | 271,526 | train/val/test |
 | fireprot | fireprot ddG (fireprotdb, thermompnn split) | 193 | train/val/test |
 | dms | proteingym DMS_substitutions | 187 | — |
-| go  | bioreason-pro (cafa5 temporal holdout) | 8,528 | — |
+| cafa5 | cafa5 GO function, temporal holdout (via bioreason-pro) | 8,528 | — |
 | allobench | allobench allosteric/active sites | 425 | — |
 | ppi | human ppi gold standard (figshare) | 11,019 | train/val/test |
 | shs27k | STRING human PPI subset (GNN-PPI / PIPR) | 1,690 | — |
@@ -136,7 +138,7 @@ unique sequences per benchmark — the whole thing, every published split includ
 
 **310,469 sequences** all told (308,121 unique — ~2.3k proteins appear in more than one benchmark). the three that grew when their train splits were added: megascale 28,199 → 271,526, fireprot 53 → 193, lp-pdbbind 2,644 → 12,718. ppi always shipped all three of its blocks and the other seven publish no split, so those were already whole. megascale dominates because it counts every mutant sequence as well as every wild type — 215,731 train substitutions of 239 wild-type proteins — so it is 271k sequences of only a few hundred distinct proteins, and a candidate homologous to one of them is homologous to all of its mutants anyway.
 
-the **published split** column is what `how="published"` will hand you. a `—` means the benchmark ships no train/val/test to select from, so `how="published"` raises. several of those seven are still distributed as evaluation-only data — go is a cafa5 temporal holdout, dms and bindingdb are assay collections — and for those the whole benchmark *is* the test data, which is exactly what the default `how="whole"` gives you.
+the **published split** column is what `how="published"` will hand you. a `—` means the benchmark ships no train/val/test to select from, so `how="published"` raises. several of those seven are still distributed as evaluation-only data — cafa5 is a temporal holdout, dms and bindingdb are assay collections — and for those the whole benchmark *is* the test data, which is exactly what the default `how="whole"` gives you.
 
 reservoirs: uniref90 (~121M sequences) and the pdb (~all deposited structures, as a directory of mmcif files).
 

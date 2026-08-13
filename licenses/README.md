@@ -16,7 +16,7 @@ terms; the full texts are in this directory.
 | megascale (thermompnn) | `download_megascale.sh` | github Kuhlman-Lab/ThermoMPNN | MIT | [MIT-ThermoMPNN.txt](MIT-ThermoMPNN.txt) | yes |
 | fireprot (thermompnn) | `download_fireprot.sh` | github Kuhlman-Lab/ThermoMPNN | MIT | [MIT-ThermoMPNN.txt](MIT-ThermoMPNN.txt) | yes |
 | dms (proteingym) | `download_proteingym.sh` | github OATML-Markslab/ProteinGym | MIT (data: cite source assays) | [MIT-ProteinGym.txt](MIT-ProteinGym.txt) | yes |
-| go (bioreason-pro) | `download_bioreason_go.sh` | hf wanglab/bioreason-pro-test-data | Apache 2.0 | [Apache-2.0.txt](Apache-2.0.txt) | yes |
+| cafa5 (via bioreason-pro) | `download_cafa5.sh` | hf wanglab/bioreason-pro-test-data | Apache 2.0 | [Apache-2.0.txt](Apache-2.0.txt) | yes |
 | allobench | `download_allobench.sh` | github djmaity/allobench | MIT (data ex-ASD, CC BY) | [MIT-allobench.txt](MIT-allobench.txt) | yes |
 | ppi | `download_ppi.sh` | figshare 21591618 (Bernett) | CC BY 4.0 | [CC-BY-4.0.txt](CC-BY-4.0.txt) | yes |
 | shs27k | `download_shs27k.sh` | github lvguofeng/GNN_PPI (STRING v10.5 subset) | CC BY 4.0 (see note) | [CC-BY-4.0.txt](CC-BY-4.0.txt) | yes |
@@ -55,7 +55,7 @@ redistributable — commercial included — with a UniProt attribution line.
 - **pdb** — Berman et al., *The Protein Data Bank*, NAR 2000.
 - **thermompnn** — Dieckhaus et al., *ThermoMPNN*, PNAS 2024 (megascale: Tsuboyama et al., Nature 2023; FireProtDB).
 - **proteingym** — Notin et al., *ProteinGym*, NeurIPS 2023 (+ each assay's source paper).
-- **bioreason-pro / go** — wanglab bioreason-pro (arXiv:2505.23579); GO annotations from CAFA5 / UniProt-GOA.
+- **cafa5 / bioreason-pro** — wanglab bioreason-pro (arXiv:2505.23579); GO annotations from CAFA5 / UniProt-GOA.
 - **allobench** — Maity et al., *AlloBench*, ACS Omega 2025 (data from ASD).
 - **ppi** — Bernett et al., figshare 10.6084/m9.figshare.21591618; interactions from HIPPIE v2.3.
 - **shs27k** — Lv et al., *GNN-PPI*, IJCAI 2021 (subset recipe: Chen et al., *PIPR*, Bioinformatics 2019); interactions + sequences from STRING v10.5 (Szklarczyk et al., NAR).

@@ -145,7 +145,7 @@ def _write(path, split_map):
 from .megascale import Megascale
 from .fireprot import Fireprot
 from .dms import Dms
-from .go import Go
+from .cafa5 import Cafa5
 from .allobench import Allobench
 from .ppi import Ppi
 from .shs27k import Shs27k
