@@ -11,8 +11,10 @@ dependencies = [
 ]
 
 # torch is only needed to load the benchmarks as datasets: `uv sync --extra torch`
+# chem is only needed to split lp-pdbbind/bindingdb on ligand similarity: `uv sync --extra chem`
 [project.optional-dependencies]
 torch = ["torch>=2.0"]
+chem = ["rdkit>=2023.3", "numpy>=1.24"]
 
 # the package lives in src/plug, so `import plug` works after `uv pip install -e .`
 [build-system]

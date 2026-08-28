@@ -49,6 +49,18 @@ sens     = os.environ.get("SENS", "7.5")
 # evalue   = os.environ.get("EVALUE", "1e-3")
 # structural similarity via TM score
 tm       = float(os.environ.get("TM", "0.5"))
+# the bar the homology split uses for structures, deliberately higher than the one above.
+# a split joins up matches that carry over (alike to alike to alike), so a loose bar drags
+# every fold into one group — at 0.5 atlas comes out as a single cluster of 99% of itself.
+split_tm = float(os.environ.get("SPLIT_TM", "0.7"))
+# ligand similarity via tanimoto on ecfp4 (morgan radius 2, 2048 bits, stereochemistry
+# ignored). the fingerprint has to be named with the number: the same two molecules score
+# 0.43 on ecfp4 and 0.79 on the rdkit fingerprint, so a bare "tanimoto 0.6" means nothing.
+# random pairs of these ligands top out around 0.23 (bindingdb) to 0.30 (lp-pdbbind), so
+# 0.6 is well clear of noise. it is deliberately stricter than the ~0.4 a chemist would
+# call similar, because the split closes links up transitively: at 0.4 bindingdb's biggest
+# ligand cluster is 87% of the set, too big to fit a train split at all.
+tanimoto = float(os.environ.get("TANIMOTO", "0.6"))
 
 # sampling parameters
 # number of observations for unlabeled training set sample

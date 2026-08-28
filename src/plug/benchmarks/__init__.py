@@ -17,6 +17,11 @@ class Benchmark(Dataset):
     seq = "sequence"
     # the splits this benchmark came with, if it came with any
     published = ()
+    # the other ways this benchmark can leak, on top of sequence: "structure", "ligand".
+    # naming one here turns on that search and puts its threshold in the split file name.
+    views = ()
+    # for a benchmark whose items pair a protein with a ligand, the field holding it
+    ligand = "smiles"
     # worked out the first time a homology split is asked for, then kept here
     _split = None
 
@@ -25,6 +30,16 @@ class Benchmark(Dataset):
     @classmethod
     def rows(cls):
         raise NotImplementedError
+
+    # the other ways this benchmark can leak, on top of sequence. a benchmark that ships
+    # structures or ligands says so here and its homology split covers those too.
+    # {name: path to a structure}
+    @classmethod
+    def structures(cls): return {}
+
+    # {name: [smiles, ...]}
+    @classmethod
+    def ligands(cls): return {}
 
     # every sequence in this benchmark, for the searches that keep the training set clean.
     # a benchmark holding sequences its items don't carry adds them on top of these.
@@ -86,7 +101,12 @@ class Benchmark(Dataset):
     # at 20% identity is never reused after you change that setting to 30%.
     @classmethod
     def split_file(cls):
-        return c.splits / f"{cls.name}__{c.split_tag()}.csv"
+        tag = c.split_tag()
+        # a benchmark split on shape or chemistry too gets those settings in the name, so
+        # a split made before those searches existed is never quietly reused
+        if "structure" in cls.views: tag += f"_tm{int(c.split_tm * 100)}"
+        if "ligand" in cls.views: tag += f"_tan{int(c.tanimoto * 100)}"
+        return c.splits / f"{cls.name}__{tag}.csv"
 
     # which split each protein is in, as {protein: "train"/"val"/"test"}. worked out
     # once, cached, and read back from then on — grouping the sequences takes
@@ -107,6 +127,9 @@ class Benchmark(Dataset):
         out = []
         for it in items:
             names = {split_map[it[k]] for k in cls.keyfields()}
+            # an item is also about its ligand, and that has to land in the same split
+            if "ligand" in cls.views and it.get(cls.ligand):
+                names.add(split_map.get(it[cls.ligand]))
             if len(names) == 1:
                 it["split"] = names.pop()
                 out.append(it)
@@ -125,7 +148,31 @@ def _build(cls, path):
     if not seqs:
         raise FileNotFoundError(f"{cls.name} has no items to split — "
                                 "download it first, see data/download_*.sh")
-    split_map = homology.deal(homology.clusters(seqs), weight)
+    # the protein graph: sequence, plus shape when the benchmark ships structures. both
+    # describe the same proteins, so they belong in one graph and either kind of match
+    # keeps two proteins together.
+    links = [homology.sequence_links(seqs)]
+    if "structure" in cls.views: links.append(homology.structure_links(cls.structures()))
+    groups = homology.merge(list(seqs), *links)
+    # a pair benchmark only keeps an item when BOTH its proteins land in the same split,
+    # so a split holding x of the proteins keeps about x*x of the pairs. dealing the
+    # proteins at the square root of the target is what lands the pairs on 80/10/10.
+    frac = (0.8, 0.1, 0.1)
+    if len(cls.keyfields()) > 1:
+        root = [f ** 0.5 for f in frac]
+        frac = tuple(r / sum(root) for r in root)
+    split_map = homology.deal(groups, weight, frac)
+
+    # ligands are a different kind of thing, so they get their own graph and then follow
+    # the proteins they were measured against
+    if "ligand" in cls.views:
+        ligs = cls.ligands()
+        votes = {}
+        for k, smiles in ligs.items():
+            for s in smiles: votes.setdefault(s, Counter())[split_map[k]] += 1
+        # ligand_links pairs up the keys it is given, so key each molecule by itself
+        lig_groups = homology.merge(list(votes), homology.ligand_links({s: [s] for s in votes}))
+        split_map.update(homology.follow(lig_groups, votes))
     _write(path, split_map)
     return split_map
 

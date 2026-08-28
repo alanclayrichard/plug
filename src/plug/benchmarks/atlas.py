@@ -11,6 +11,8 @@ class Atlas(Benchmark):
     # every item is about one pdb chain
     key = "pdb_chain"
     published = ()
+    # shape leaks too, not just sequence
+    views = ("structure",)
 
     @classmethod
     def rows(cls):
@@ -28,3 +30,14 @@ class Atlas(Benchmark):
                    # the mean rmsf over the three runs, and the three runs themselves
                    "rmsf": [sum(v) / 3 for v in zip(*replicas)],
                    "rmsf_replicas": [list(v) for v in replicas]}
+
+    # atlas is about how a shape moves, so two chains that fold the same way can't sit in
+    # different splits however far their sequences have drifted. the split checks both.
+    @classmethod
+    def structures(cls):
+        d = c.data / "atlas" / "pdb"
+        found = {p.stem: p for p in sorted(d.glob("*.pdb"))} if d.exists() else {}
+        if not found:
+            raise FileNotFoundError(f"atlas has no structures in {d} — "
+                                    "rerun data/download_atlas.sh to fetch them")
+        return found

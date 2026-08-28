@@ -48,7 +48,7 @@ checking a small sample against the benchmark fastas is cheap and exact; the res
 the reservoirs are downloaded separately — point `.env` at them (and at the search binaries). copy `.env.example` to `.env` and edit; `config.py` auto-loads it. then:
 
 ```bash
-uv sync --extra torch                    # create .venv (torch is only needed to load the benchmarks)
+uv sync --extra torch --extra chem       # create .venv (torch loads the benchmarks, chem/rdkit splits on ligands)
 uv pip install -e .                      # so `import plug` works from anywhere
 source .venv/bin/activate                # then plain `python ...` uses the venv
 for s in data/download_*.sh; do sh "$s"; done   # fetch every benchmark
@@ -99,23 +99,63 @@ every one of them takes `split=` and `how=`. the four that ship a split default 
 
 for **supervised models**, benchmarks can be broken into train/val/test splits. note that there is frequently more data available to train on in the literature. **every** benchmark takes the same two arguments. `split` picks the split you want, `how` says where it came from — published (from literature) or homology (generated here). this allows for direct comparison to literature for some benchmarks or a consistent homology splitting strategy for all benchmarks.
 
+the three ways to load any benchmark, side by side:
+
 ```python
-Megascale()                     # published split, test (the default)
-Megascale(split="train")        # "val", or "all" for everything
-Megascale(how="homology")       # split rebuilt here, test
-Atlas()                         # ships no split: the whole benchmark, as one test set
-Atlas(how="published")          # ValueError — atlas never published one
-Atlas(how="homology")           # so build one: test of a fresh 80/10/10
+# 1. the whole thing as one set — nothing held back, every item labelled "test".
+#    for self/unsupervised work, or when you brought your own split.
+Megascale(how="whole", split="all")
+
+# 2. the split the benchmark itself published — for comparing against its paper.
+#    only four ship one (megascale, fireprot, lp-pdbbind, ppi); the rest raise.
+Megascale(split="train")             # "val", "test" (the default), or "all"
+
+# 3. an 80/10/10 homology split, built here and cached. works for all eleven.
+#    reads data/<bench>/ and the .env settings, then writes data/splits/<bench>__<tag>.csv
+Megascale(how="homology", split="train")
+Atlas(how="homology")                # test of a fresh 80/10/10
 ```
 
-- `how="published"` — the split the benchmark itself shipped. four of them do (megascale, fireprot, lp-pdbbind, ppi); asking the other seven for one is a `ValueError` rather than a silently made-up split. asking for a split it doesn't publish is an error too, so `split="val"` never returns a quiet empty list.
-- `how="homology"` — a fresh split built here (below). available for all eleven.
-- `how="whole"` — no split at all: every item is `test`, because the whole benchmark is the test set. the default for the seven that publish no split, so a plain `Atlas()` is the entire benchmark.
+3 is the one that does real work: it groups the benchmark's own proteins with the thresholds from your `.env` (`MIN_ID`, `COV`, plus `SPLIT_TM`/`TANIMOTO` where they apply) over the data in `data/`, then caches the result. the first call is slow — minutes on the big benchmarks — and every call after reads the cached csv. change a threshold and the file name changes with it, so you get a fresh split rather than a stale one.
 
-`how="homology"` runs [`homology.py`](src/plug/homology.py): search the benchmark's **own** proteins against themselves with mmseqs, link any two that clear the leakage rule's bar (`MIN_ID` identity over `COV` coverage) under **either cov-mode** — mode 1 catches a hit that only covers the target, mode 2 one that only covers the query, so a protein that is a subdomain of another gets caught whichever way round it is — take the union of both graphs, then deal whole connected components 80/10/10 into train/val/test, biggest first, each to whichever split is furthest below its share. no two splits share a homolog (or a homolog of a homolog — the components are transitively closed), and every item of a protein moves together.
+1 and 2 are the defaults: benchmarks that publish a split default to `how="published"` and its **test** split, and the seven that don't default to `how="whole"`, so a plain `Atlas()` is the entire benchmark and a plain `Megascale()` is its published test set. `Atlas(how="published")` is a `ValueError`, never a silently invented split, and asking for a part a benchmark doesn't publish is an error too — `split="val"` never comes back as a quiet empty list.
 
-pair benchmarks (ppi, shs27k) pass both proteins — `("id_a", "id_b")` with `("sequence_a", "sequence_b")` — so a pair contributes both to the clustering. the fractions then apply to the *proteins*, and a pair whose two proteins land in different splits is dropped (it belongs to neither), so retained pair counts skew hard: shs27k 7,624 → 4,953/102/93, ppi 274,500 → 176,832/3,051/3,055. the published ppi split is the paper's own version of the same idea (divide proteins into three blocks, keep only within-block pairs) and is far better balanced — 163,192/59,260/52,048, 50/50 positives in every split — so prefer it unless you want the split rebuilt at this repo's stricter identity cutoff than that.
+`how="homology"` runs [`homology.py`](src/plug/homology.py): search the benchmark's **own** proteins against themselves with mmseqs, link any two that clear the leakage rule's bar (`MIN_ID` identity over `COV` coverage) under **either cov-mode** — mode 1 catches a hit that only covers the target, mode 2 one that only covers the query, so a protein that is a subdomain of another gets caught whichever way round it is — and take the union of both. whole groups are then dealt 80/10/10, biggest first, each going to whichever split is furthest below its share. no two splits share a homolog, or a homolog of a homolog: the groups are transitively closed, and every item of a protein moves with it.
 
+a benchmark can look alike in more than one way, and the rule is the same each time: search it against itself, link anything over the bar **in either direction**, and keep whole groups of linked things together.
+
+- **proteins** — sequence (mmseqs, both coverage modes, `MIN_ID`/`COV`) and, for a benchmark that ships structures, shape as well (foldseek TM read both ways round, `SPLIT_TM`). both describe the same proteins, so they share one graph and either kind of match holds two proteins together. **atlas** ships structures; `data/download_atlas.sh` pulls the `.pdb` alongside the RMSF table.
+- **ligands** — chemistry (`TANIMOTO` on ecfp4: morgan radius 2, 2048 bits, stereochemistry ignored), for **lp-pdbbind** and **bindingdb**. the fingerprint has to be named alongside the number — the same two molecules score 0.43 on ecfp4 and 0.79 on the rdkit fingerprint, so a bare tanimoto value says nothing. a ligand is a different kind of thing from a protein, so it gets its **own** graph. putting both in one graph is what breaks: a single shared molecule chains protein to protein until the whole benchmark is one group. needs rdkit (`uv sync --extra chem`).
+
+proteins are dealt first, then each ligand cluster follows the proteins it was measured against. an item is kept only when everything it is about — both proteins of a pair, or a protein and its ligand — lands in the same split. that is the rule ppi and shs27k already obeyed, so all eleven run one algorithm.
+
+`TANIMOTO` is 0.6, and that is a closure bar rather than a claim about chemistry. random pairs of these ligands top out around 0.23 (bindingdb) and 0.30 (lp-pdbbind), so 0.6 is well clear of noise — but it is stricter than the ~0.4 a chemist would call similar, and it will not link two same-class drugs that score 0.43. it has to be: the split closes links up transitively, and at 0.4 bindingdb's biggest ligand cluster is 87% of the set, too big to fit a train split at all. 0.6 is the most inclusive bar that still partitions — it triples the ligand links over 0.7 (110k against 254k on bindingdb) for two points of retention.
+
+`SPLIT_TM` is 0.7 while the trainset's `TM` is 0.5, on purpose. a split takes the *transitive closure*: alike-to-alike-to-alike all lands together. at 0.5 every atlas chain links to ~94 others and 99.5% of the benchmark collapses into a single cluster. at 0.7 it links to ~1.5 and the split works. (foldseek's `alntmscore` normalises TM over the aligned stretch, which scores one domain inside a much longer chain as a whole-chain match — six times too many hits — so `qtmscore`/`ttmscore` are used instead.)
+
+measured, every benchmark rebuilt from scratch and then verified against the raw mmseqs hits — not the groups, so the check can't inherit the grouping's own mistake:
+
+| benchmark | items kept | train/val/test | protein families in >1 split |
+|---|---|---|---|
+| dms | 2,465,767 (100%) | 80.0 / 10.0 / 10.0 | 0 |
+| megascale | 271,231 (100%) | 79.9 / 10.1 / 10.1 | 0 |
+| cafa5 | 8,630 (100%) | 80.0 / 10.0 / 10.0 | 0 |
+| fireprot | 3,404 (100%) | 80.0 / 10.0 / 10.0 | 0 |
+| allobench | 2,257 (100%) | 80.0 / 10.0 / 10.0 | 0 |
+| atlas (+ structure) | 1,938 (100%) | 80.0 / 10.0 / 10.0 | 0 |
+| passerrank | 1,885 (100%) | 80.0 / 10.0 / 10.0 | 0 |
+| bindingdb (+ ligand) | 69,942 / 76,866 (91%) | 83.2 / 9.0 / 7.7 | 0 |
+| lp-pdbbind (+ ligand) | 16,625 / 19,443 (86%) | 85.4 / 7.6 / 7.0 | 0 |
+| shs27k (pair) | 3,631 / 7,624 (48%) | 78.2 / 10.5 / 11.3 | 0 |
+| ppi (pair) | 119,017 / 274,500 (43%) | 79.8 / 10.2 / 10.0 | 0 |
+
+the last column is the promise, and it is the strict one: **a protein family lands in exactly one split**, so a test protein was never seen in training — not under a different partner, not paired with a different ligand. that is what the dropping buys. a rule that instead keeps whole items together and lets a family span splits fills every benchmark back up to 100%, but then most families do span: 93% of ppi's would, and a model that has already met the test protein scores against itself.
+
+these numbers, and the cached splits in `data/splits/`, were built with the mmseqs on the pod. a different mmseqs build finds a slightly different hit set — 1,402 edges against 1,398 on shs27k — which reshuffles the deal without ever breaking the guarantee. build with the most sensitive search you have, and keep the split csvs.
+
+**items kept** is the cost of the rule. when an item is about two things, both have to agree, and the ones that straddle a boundary belong to neither split so they are dropped. a split holding *x* of the proteins keeps about *x²* of the pairs, which is why the proteins are dealt at the square root of the target (59/21/21) to land the surviving pairs on 80/10/10 — and why the pair benchmarks keep under half their items. for ligands the cluster follows its proteins instead of being dealt blind, which keeps ~90% rather than ~45%.
+
+for ppi specifically, the **published** split is the paper's own version of the same idea (divide the proteins into three blocks, keep only within-block pairs) and is far better balanced — 163,192/59,260/52,048, 50/50 positives in every split. prefer it unless you specifically want the split rebuilt at this repo's stricter identity bar.
 
 ## datasets
 
@@ -162,7 +202,7 @@ class Atlas(Benchmark):
         yield {"sequence": ..., "pdb_chain": ...}
 ```
 
-pair benchmarks set `key = ("id_a", "id_b")` and `seq = ("sequence_a", "sequence_b")`. if the benchmark ships a split, give every item its `"split"`. if it holds sequences its items don't carry (mutants, extra chains), override `sequences()` — everything it yields is held out of the trainset.
+pair benchmarks set `key = ("id_a", "id_b")` and `seq = ("sequence_a", "sequence_b")`. if the benchmark ships a split, give every item its `"split"`. if it holds sequences its items don't carry (mutants, extra chains), override `sequences()` — everything it yields is held out of the trainset. if it can leak through something other than sequence, set `views = ("structure",)` or `("ligand",)` and override `structures()` (`{key: path to a .pdb}`) or `ligands()` (`{key: [smiles, ...]}`) — its homology split will then cover that too.
 3. import it in [`benchmarks/__init__.py`](src/plug/benchmarks/__init__.py) — a benchmark missing from that list silently disappears from `REGISTRY`.
 4. `python -m plug.fastas <name>`, then `python -m plug.build_unlabeled_trainset` — the sample is checked against every `data/formatted/*.fasta` (and, for `RESERVOIR=struct|both`, every structure in `STRUCT_TESTS`), so the new benchmark is protected automatically. `split=`/`how=` already work.
 

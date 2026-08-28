@@ -55,8 +55,22 @@ def foldseek(*args):
 
 # every benchmark fasta as one searchable database (padded if searching on a gpu)
 def benchmark_target(tmp):
+    # imported here, not at the top: the struct reservoir never calls this and shouldn't
+    # have to have torch installed to build a trainset
+    from .benchmarks import REGISTRY
+    found = {p.stem: p for p in sorted(c.formatted.glob("*.fasta"))}
+    # this folder is the whole screen, and nothing else checks it against the benchmarks.
+    # a benchmark with no fasta here is one the trainset was never held clear of, and it
+    # fails silently — the build still finishes and the count still looks right, so the
+    # only sign is inflated scores later. rename one (go -> cafa5) or add one and forget
+    # to rerun plug.fastas and that is exactly what you get. so refuse instead.
+    missing, orphan = sorted(set(REGISTRY) - set(found)), sorted(set(found) - set(REGISTRY))
+    if missing or orphan:
+        raise FileNotFoundError(
+            f"data/formatted is out of step with the benchmarks — missing {missing}, "
+            f"orphaned {orphan}. run `python -m plug.fastas` to rebuild it")
     fa = tmp / "benchmarks.fasta"
-    fa.write_text("".join(p.read_text() for p in sorted(c.formatted.glob("*.fasta"))))
+    fa.write_text("".join(p.read_text() for p in found.values()))
     db = tmp / "bench_db"
     mmseqs("createdb", str(fa), str(db), "--dbtype", "1")
     if c.gpu:

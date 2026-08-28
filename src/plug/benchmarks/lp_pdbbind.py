@@ -16,6 +16,8 @@ class LpPdbbind(Benchmark):
     # every item is about one pdb entry
     key = "pdb"
     published = ("train", "val", "test")
+    # the ligand leaks too, not just the protein
+    views = ("ligand",)
 
     @classmethod
     def rows(cls):
@@ -31,3 +33,12 @@ class LpPdbbind(Benchmark):
                        "smiles": (r.get("smiles") or "").strip(),
                        # a few hundred rows are in none of the three splits
                        "split": r.get("new_split", "")}
+
+    # the label is about a protein and a ligand together, so the split has to keep the
+    # chemistry apart as well — a test ligand must not come back as a train molecule.
+    @classmethod
+    def ligands(cls):
+        out = {}
+        for it in cls.rows():
+            if it["smiles"]: out.setdefault(it[cls.key], []).append(it["smiles"])
+        return out

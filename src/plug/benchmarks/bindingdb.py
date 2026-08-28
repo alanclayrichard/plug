@@ -16,6 +16,20 @@ SEQUENCE = "BindingDB Target Chain Sequence 1"
 AFFINITIES = (("IC50", "IC50 (nM)"), ("Ki", "Ki (nM)"), ("Kd", "Kd (nM)"), ("EC50", "EC50 (nM)"))
 
 
+# cells that say "no molecule here" rather than naming one. left alone they would read as
+# a ligand that lots of rows share, which would wrongly tie those rows together.
+BLANK = {"", "null", "none", "nan", "n/a"}
+
+
+# a smiles never has a space in it, but a couple hundred rows tack an annotation block on
+# the end ("CCO |TLB:19:20:24|") describing stereochemistry. it isn't part of the molecule
+# and it makes the whole string unreadable, so keep only the molecule.
+def smiles(v):
+    v = (v or "").strip()
+    v = v.split(maxsplit=1)[0] if v else ""
+    return "" if v.lower() in BLANK else v
+
+
 # an affinity cell like ">40" -> (">", 40.0), or None if it can't be read
 def affinity(v):
     v = (v or "").strip()
@@ -31,6 +45,8 @@ class Bindingdb(Benchmark):
     # thousands of rows carry no uniprot id, so the sequence itself names the protein
     key = "sequence"
     published = ()
+    # the ligand leaks too, not just the protein
+    views = ("ligand",)
 
     @classmethod
     def rows(cls):
@@ -46,8 +62,17 @@ class Bindingdb(Benchmark):
                    "uniprot": (r.get("UniProt (SwissProt) Primary ID of Target Chain 1") or "").strip(),
                    "target_name": (r.get("Target Name") or "").strip(),
                    "organism": (r.get("Target Source Organism According to Curator or DataSource") or "").strip(),
-                   "smiles": (r.get("Ligand SMILES") or "").strip(),
+                   "smiles": smiles(r.get("Ligand SMILES")),
                    "measure": measure, "value": value, "relation": relation}
+
+    # the label is about a protein and a ligand together, so the split has to keep the
+    # chemistry apart as well — a test ligand must not come back as a train molecule.
+    @classmethod
+    def ligands(cls):
+        out = {}
+        for it in cls.rows():
+            if it["smiles"]: out.setdefault(it[cls.key], []).append(it["smiles"])
+        return out
 
     # every single chain row, affinity readable or not
     @classmethod
