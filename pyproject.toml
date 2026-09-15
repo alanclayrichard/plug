@@ -1,7 +1,7 @@
 [project]
 name = "plug"
 version = "0.1.0"
-description = "PLUG: Protein Leakage-free evaluation for Unbiased Generators of function — leakage-free training sets (uniref90/pdb) + functional benchmarks"
+description = "PLUG: Protein Leakage-free evaluation for Unbiased Generators of function — leakage-free benchmark splits + leakage-free unlabeled datasets"
 requires-python = ">=3.10"
 # core deps: enough to download, format, and build the training set
 dependencies = [
@@ -12,9 +12,13 @@ dependencies = [
 
 # torch is only needed to load the benchmarks as datasets: `uv sync --extra torch`
 # chem is only needed to split lp-pdbbind/bindingdb on ligand similarity: `uv sync --extra chem`
+# solver is the milp that makes the splits, built in cvxpy and solved with scip —
+# datasail's own stack, so a comparison between the two is one of formulations:
+# `uv sync --extra solver`
 [project.optional-dependencies]
 torch = ["torch>=2.0"]
 chem = ["rdkit>=2023.3", "numpy>=1.24"]
+solver = ["cvxpy>=1.5", "pyscipopt>=5.0", "scipy>=1.10", "numpy>=1.24"]
 
 # the package lives in src/plug, so `import plug` works after `uv pip install -e .`
 [build-system]

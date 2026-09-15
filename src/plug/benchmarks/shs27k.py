@@ -1,6 +1,16 @@
-# SHS27k: the string human interaction subset used by GNN-PPI (lv et al. 2021), built
-# with the recipe from PIPR (chen et al. 2019). 1,690 proteins that are less than 40%
-# alike, and the pairs between them. ships no split of its own.
+# shs27k string interaction pairs, one item per protein pair
+'''
+The STRING human interaction subset used by GNN-PPI (Lv et al. 2021), built
+with the recipe from PIPR (Chen et al. 2019): 1,690 proteins that are less than
+40% alike, and the pairs between them. It ships no split of its own. STRING
+lists one row per interaction kind, so the kinds are gathered per pair first
+and an item ends up carrying the set of ways two proteins interact rather than
+one row each; the confidence kept is the best STRING gives that pair. An item
+is about two proteins, so both are named and both carry a sequence, and a pair
+survives a split only when both of its ends agree. Pass mode to keep only the
+pairs that interact one particular way.
+'''
+
 import csv
 
 from . import Benchmark
@@ -9,21 +19,42 @@ from .. import config as c
 # the kinds of interaction string records for a pair
 MODES = ("reaction", "binding", "catalysis", "activation", "inhibition", "ptmod", "expression")
 
-
 class Shs27k(Benchmark):
+    '''string interaction pairs and the kinds of interaction they carry.'''
+
     name = "shs27k"
     # an item is about two proteins, so both are named and both have a sequence
     key = ("id_a", "id_b")
+    # what this benchmark is scored on, for the stratified split
+    label = "types"
     seq = ("sequence_a", "sequence_b")
     published = ()
 
-    # pass mode to keep only the pairs that interact that way
     def __init__(self, mode=None, split="test", how=None):
+        '''
+        load the benchmark, optionally narrowed to one kind of interaction.
+
+        inputs:
+            mode: str | None -- one of MODES
+            split: str -- "train", "val", "test" or "all"
+            how: str | None -- "published", "homology" or "whole"
+        outputs:
+            none
+        '''
         super().__init__(split, how)
         if mode: self.items = [it for it in self.items if mode in it["types"]]
 
     @classmethod
     def rows(cls):
+        '''
+        one item per pair, carrying every kind of interaction string records
+        for it and the best confidence it gives.
+
+        inputs:
+            none
+        outputs:
+            rows: iterator[dict] -- both sequences, both ids, types and score
+        '''
         folder = c.data / "shs27k"
         seqs = {}
         with open(folder / "protein.SHS27k.sequences.dictionary.tsv") as f:

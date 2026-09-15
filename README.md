@@ -7,7 +7,7 @@
 build a **leakage-free** training subset — sampled from a sequence reservoir (uniref90), a structure reservoir (pdb), or both — to align/train a protein model on, then test whether alignment improves prediction on mutliple functional benchmarks (megascale + fireprot ddG, proteingym dms fitness, cafa5 GO function, allobench + passerrank allosteric sites, human PPI + string, lp-pdbbind/bindingdb affinity, atlas MD per-residue RMSF, and whatever else you want).
 
 default leakage rule: a sampled candidate is dropped if it looks like any **test** protein —
-- **sequence** (`RESERVOIR=seq`, uniref90): mmseqs2 alignment over >80% of a test seq's length at >20% identity (`COV`/`MIN_ID`), so the test protein's content is present in the train seq. Run bidirectionally (union of mode 1 and 2) so that subdomains are found.
+- **sequence** (`RESERVOIR=seq`, uniref90): mmseqs2 alignment over >80% of a test seq's length at >30% identity (`COV`/`MIN_ID`), so the test protein's content is present in the train seq. Run bidirectionally (union of mode 1 and 2) so that subdomains are found.
 - **structure** (`RESERVOIR=struct`, pdb): foldseek TMalign at >0.5 TM-score to a test structure (`TM`), i.e. the same fold.
 - **both** (`RESERVOIR=both`): a union graph over the sequence and structure hits — a candidate is dropped if its component touches a test protein in *either* view, so a seq+struct model is safe against leakage through either lens.
 
@@ -30,9 +30,10 @@ to create your own leakage-free unlabeled training set:
 ```
 data/download_*.sh          download benchmark(s) (all of its splits) -> data/<bench>/
 plug/benchmarks/<name>.py   one file per benchmark: how to read it    -> load as a torch dataset
-plug/fastas.py              each benchmark -> uniform fasta           -> data/formatted/<bench>.fasta
-plug/homology.py            re-split a benchmark by similarity        -> data/splits/<bench>__<thresholds>.csv
-plug/build_unlabeled_trainset.py   sample a reservoir, drop leakers   -> trainset.fasta
+plug/graphs.py              what is too alike to separate             -> groups that must stay together
+plug/solver.py              assign whole groups to train/val/test     -> maximise retained datapoints
+plug/splitting.py           the two together, plus the leakage audit  -> data/splits/<bench>__<thresholds>.csv
+plug/build_unlabeled_dataset.py    sample a reservoir, drop leakers   -> trainset.fasta
 ```
 
 instead of scanning a whole reservoir (~121M uniref90 seqs, or the whole pdb), the trainset builder **reservoir-samples** a batch of candidates in one streaming pass so that the reservoir is never held in memory. it checks *every* sampled candidate against the combined benchmarks (~310k sequences, all splits), keeps the clean ones, and resamples until the quota is met:
@@ -61,10 +62,12 @@ for s in data/download_*.sh; do sh "$s"; done   # fetch every benchmark
 ## run
 
 ```bash
-python -m plug.fastas                    # all benchmarks -> data/formatted/*.fasta
-RESERVOIR=seq   python -m plug.build_unlabeled_trainset   # sample uniref90, drop sequence leakers
-RESERVOIR=struct python -m plug.build_unlabeled_trainset  # sample the pdb, drop TM-score leakers
-RESERVOIR=both  python -m plug.build_unlabeled_trainset   # sample the pdb, drop union (seq ∪ struct) leakers
+python -m plug.splitting                 # split every benchmark -> data/splits/*.csv
+python -m plug.splitting shs27k ppi      # or just some of them
+
+RESERVOIR=seq   python -m plug.build_unlabeled_dataset   # sample uniref90, drop sequence leakers
+RESERVOIR=struct python -m plug.build_unlabeled_dataset  # sample the pdb, drop TM-score leakers
+RESERVOIR=both  python -m plug.build_unlabeled_dataset   # sample the pdb, drop union (seq ∪ struct) leakers
 ```
 
 `.env` controls it: `RESERVOIR` picks seq/struct/both, `QUOTA` is how many leakage-free seqs to collect, `OVERSAMPLE` how much extra to draw each round to cover dropped leakers, `MIN_LEN`/`MAX_LEN` bound the sampled protein length (drops fragments + giant non-physiological seqs), `MIN_ID`/`TM` are the sequence/structure leakage thresholds, `GPU=1` runs the check on a cuda gpu.
@@ -75,9 +78,9 @@ needs torch (`uv sync --extra torch`), with the venv activated:
 
 ```python
 from plug.benchmarks import *
-from plug.build_unlabeled_trainset import Trainset
+from plug.build_unlabeled_dataset import Unlabeled
 
-train = Trainset.from_fasta()         # {sequence, id} — the leakage-free align set (id = uniprot code)
+train = Unlabeled.from_fasta()         # {sequence, id} — the leakage-free align set (id = uniprot code)
 mega  = Megascale()                   # {sequence, mutation, ddg, pdb, split} — megascale ddG
 fire  = Fireprot()                    # {sequence, mutation, ddg, pdb, split} — fireprot ddG
 dms   = Dms(assay="Binding")          # {sequence, mutation, score, assay, dms_id, uniprot, split}
@@ -120,14 +123,24 @@ Atlas(how="homology")                # test of a fresh 80/10/10
 
 1 and 2 are the defaults: benchmarks that publish a split default to `how="published"` and its **test** split, and the seven that don't default to `how="whole"`, so a plain `Atlas()` is the entire benchmark and a plain `Megascale()` is its published test set. `Atlas(how="published")` is a `ValueError`, never a silently invented split, and asking for a part a benchmark doesn't publish is an error too — `split="val"` never comes back as a quiet empty list.
 
-`how="homology"` runs [`homology.py`](src/plug/homology.py): search the benchmark's **own** proteins against themselves with mmseqs, link any two that clear the leakage rule's bar (`MIN_ID` identity over `COV` coverage) under **either cov-mode** — mode 1 catches a hit that only covers the target, mode 2 one that only covers the query, so a protein that is a subdomain of another gets caught whichever way round it is — and take the union of both. whole groups are then dealt 80/10/10, biggest first, each going to whichever split is furthest below its share. no two splits share a homolog, or a homolog of a homolog: the groups are transitively closed, and every item of a protein moves with it.
+`how="homology"` runs [`splitting.py`](src/plug/splitting.py), which is two steps.
+
+**what is too alike to separate** ([`graphs.py`](src/plug/graphs.py)) — search the benchmark's **own** proteins against themselves with mmseqs, link any two that clear the leakage rule's bar (`MIN_ID` identity over `COV` coverage) under **either cov-mode** — mode 1 catches a hit that only covers the target, mode 2 one that only covers the query, so a protein that is a subdomain of another gets caught whichever way round it is — and take the union of both. those links are then closed transitively into **groups**: something alike something alike lands in the same group. a group is indivisible from here on.
+
+**where the groups go** ([`solver.py`](src/plug/solver.py)) — every datapoint is reduced to the *set of groups it rides on*: one group for a single-protein measurement, two for an interaction pair, a protein and a ligand for an affinity. a datapoint is retained exactly when every group in that set lands in the same split, and it is dropped otherwise. a mixed-integer program then assigns whole groups to train/val/test, **maximising retained datapoints** subject to each split's size sitting within a tolerance of its share (±5% of what survives, by default). the proportions are of the survivors rather than of the whole benchmark because that is the only form every benchmark can satisfy: on ppi a pair is kept only when both ends agree, which caps retention near 48%, so no assignment could put 80% of *all* pairs in train.
+
+so leakage is not penalised here, it is unrepresentable: no group is ever divided, whatever the solver decides. what the solver is actually for is the *cost* — a leakage-free split throws rows away, and how many depends entirely on which groups go where. on lp-pdbbind, dealing the groups greedily largest-first keeps 82.2% of the affinities; solving for it keeps **99.6%**, proven optimal, at the same zero leakage. on shs27k it is 43.8% against 91.3%.
+
+the greedy dealer survives as the solver's warm start. cvxpy cannot hand a milp a starting solution, so what gets handed over is what the hint *proves*: a legal assignment keeping R rows means `retained >= R` holds at the optimum too, so it is added as a bound. it can only cut away worse answers, never the best one. built in cvxpy and solved with scip (`uv sync --extra solver`).
+
+`splitting.audit()` is what makes any of this checkable: it re-reads the raw mmseqs / foldseek / rdkit hits — not the groups, which would be circular, since the groups are what the assignment was built from — and counts how many ended up with their two ends in different splits. for a split made here that number is zero.
 
 a benchmark can look alike in more than one way, and the rule is the same each time: search it against itself, link anything over the bar **in either direction**, and keep whole groups of linked things together.
 
 - **proteins** — sequence (mmseqs, both coverage modes, `MIN_ID`/`COV`) and, for a benchmark that ships structures, shape as well (foldseek TM read both ways round, `SPLIT_TM`). both describe the same proteins, so they share one graph and either kind of match holds two proteins together. **atlas** ships structures; `data/download_atlas.sh` pulls the `.pdb` alongside the RMSF table.
 - **ligands** — chemistry (`TANIMOTO` on ecfp4: morgan radius 2, 2048 bits, stereochemistry ignored), for **lp-pdbbind** and **bindingdb**. the fingerprint has to be named alongside the number — the same two molecules score 0.43 on ecfp4 and 0.79 on the rdkit fingerprint, so a bare tanimoto value says nothing. a ligand is a different kind of thing from a protein, so it gets its **own** graph. putting both in one graph is what breaks: a single shared molecule chains protein to protein until the whole benchmark is one group. needs rdkit (`uv sync --extra chem`).
 
-proteins are dealt first, then each ligand cluster follows the proteins it was measured against. an item is kept only when everything it is about — both proteins of a pair, or a protein and its ligand — lands in the same split. that is the rule ppi and shs27k already obeyed, so all eleven run one algorithm.
+both graphs go into the same model, so proteins and ligands are assigned together rather than one following the other. an item is kept only when everything it is about — both proteins of a pair, or a protein and its ligand — lands in the same split. that is the rule ppi and shs27k already obeyed, so all eleven run one algorithm and no benchmark needs a special case.
 
 `TANIMOTO` is 0.6, and that is a closure bar rather than a claim about chemistry. random pairs of these ligands top out around 0.23 (bindingdb) and 0.30 (lp-pdbbind), so 0.6 is well clear of noise — but it is stricter than the ~0.4 a chemist would call similar, and it will not link two same-class drugs that score 0.43. it has to be: the split closes links up transitively, and at 0.4 bindingdb's biggest ligand cluster is 87% of the set, too big to fit a train split at all. 0.6 is the most inclusive bar that still partitions — it triples the ligand links over 0.7 (110k against 254k on bindingdb) for two points of retention.
 
@@ -138,22 +151,28 @@ measured, every benchmark rebuilt from scratch and then verified against the raw
 | benchmark | items kept | train/val/test | protein families in >1 split |
 |---|---|---|---|
 | dms | 2,465,767 (100%) | 80.0 / 10.0 / 10.0 | 0 |
-| megascale | 271,231 (100%) | 79.9 / 10.1 / 10.1 | 0 |
+| megascale | 271,231 (100%) | 80.0 / 10.0 / 10.0 | 0 |
 | cafa5 | 8,630 (100%) | 80.0 / 10.0 / 10.0 | 0 |
 | fireprot | 3,404 (100%) | 80.0 / 10.0 / 10.0 | 0 |
 | allobench | 2,257 (100%) | 80.0 / 10.0 / 10.0 | 0 |
 | atlas (+ structure) | 1,938 (100%) | 80.0 / 10.0 / 10.0 | 0 |
 | passerrank | 1,885 (100%) | 80.0 / 10.0 / 10.0 | 0 |
-| bindingdb (+ ligand) | 69,942 / 76,866 (91%) | 83.2 / 9.0 / 7.7 | 0 |
-| lp-pdbbind (+ ligand) | 16,625 / 19,443 (86%) | 85.4 / 7.6 / 7.0 | 0 |
-| shs27k (pair) | 3,631 / 7,624 (48%) | 78.2 / 10.5 / 11.3 | 0 |
-| ppi (pair) | 119,017 / 274,500 (43%) | 79.8 / 10.2 / 10.0 | 0 |
+| bindingdb (+ ligand) | 75,119 / 76,866 (98%) | 85.0 / 9.9 / 5.1 | 0 |
+| lp-pdbbind (+ ligand) | 19,156 / 19,443 (99%) | 85.0 / 7.5 / 7.5 | 0 |
+| shs27k (pair) | 6,567 / 7,624 (86%) | 80.5 / 10.0 / 9.5 | 0 |
+| ppi (pair) | 140,040 / 274,500 (51%) | 84.9 / 10.2 / 5.0 | 0 |
+
+ppi and lp-pdbbind sit off 80/10/10 because their second solver pass — the one that lands
+the sizes on target once retention is settled — returned a SolverError, so the split kept is
+the retention pass's answer with the sizes wherever they fell. the three-way proportions are
+of what survives. retention is a proven optimum only on bindingdb; the other three came back
+`optimal_inaccurate`, so their figures are what the solver reached, not what is achievable.
 
 the last column is the promise, and it is the strict one: **a protein family lands in exactly one split**, so a test protein was never seen in training — not under a different partner, not paired with a different ligand. that is what the dropping buys. a rule that instead keeps whole items together and lets a family span splits fills every benchmark back up to 100%, but then most families do span: 93% of ppi's would, and a model that has already met the test protein scores against itself.
 
-these numbers, and the cached splits in `data/splits/`, were built with the mmseqs on the pod. a different mmseqs build finds a slightly different hit set — 1,402 edges against 1,398 on shs27k — which reshuffles the deal without ever breaking the guarantee. build with the most sensitive search you have, and keep the split csvs.
+these numbers were built with the mmseqs on the pod, at the thresholds this repo now defaults to. a different mmseqs build finds a slightly different hit set — 1,402 edges against 1,398 on shs27k — which reshuffles the deal without ever breaking the guarantee. build with the most sensitive search you have, and keep the split csvs.
 
-**items kept** is the cost of the rule. when an item is about two things, both have to agree, and the ones that straddle a boundary belong to neither split so they are dropped. a split holding *x* of the proteins keeps about *x²* of the pairs, which is why the proteins are dealt at the square root of the target (59/21/21) to land the surviving pairs on 80/10/10 — and why the pair benchmarks keep under half their items. for ligands the cluster follows its proteins instead of being dealt blind, which keeps ~90% rather than ~45%.
+**items kept** is the cost of the rule. when an item is about two things, both have to agree, and the ones that straddle a boundary belong to neither split so they are dropped. a split holding *x* of the proteins keeps about *x²* of the pairs, which is why the proteins are dealt at the square root of the target (59/21/21) to land the surviving pairs on 80/10/10. how much that costs depends on how the benchmark is shaped rather than on whether it pairs: ppi loses half its pairs because its proteins are densely interlinked, while shs27k — built to be under 40% self-similar in the first place — keeps 86% of them. the ligand benchmarks keep almost everything, because a ligand group follows the proteins it was measured against instead of being dealt blind.
 
 for ppi specifically, the **published** split is the paper's own version of the same idea (divide the proteins into three blocks, keep only within-block pairs) and is far better balanced — 163,192/59,260/52,048, 50/50 positives in every split. prefer it unless you specifically want the split rebuilt at this repo's stricter identity bar.
 
@@ -202,9 +221,9 @@ class Atlas(Benchmark):
         yield {"sequence": ..., "pdb_chain": ...}
 ```
 
-pair benchmarks set `key = ("id_a", "id_b")` and `seq = ("sequence_a", "sequence_b")`. if the benchmark ships a split, give every item its `"split"`. if it holds sequences its items don't carry (mutants, extra chains), override `sequences()` — everything it yields is held out of the trainset. if it can leak through something other than sequence, set `views = ("structure",)` or `("ligand",)` and override `structures()` (`{key: path to a .pdb}`) or `ligands()` (`{key: [smiles, ...]}`) — its homology split will then cover that too.
+pair benchmarks set `key = ("id_a", "id_b")` and `seq = ("sequence_a", "sequence_b")`. if the benchmark ships a split, give every item its `"split"`. if it holds sequences its items don't carry (mutants, extra chains), override `sequences()` — everything it yields is held out of the trainset. if it can leak through something other than sequence, set `views = ("structure",)` or `("ligand",)` and override `structures()` (`{key: path to a .pdb}`) or `ligands()` (`{key: [smiles, ...]}`) — its split will then cover that too.
 3. import it in [`benchmarks/__init__.py`](src/plug/benchmarks/__init__.py) — a benchmark missing from that list silently disappears from `REGISTRY`.
-4. `python -m plug.fastas <name>`, then `python -m plug.build_unlabeled_trainset` — the sample is checked against every `data/formatted/*.fasta` (and, for `RESERVOIR=struct|both`, every structure in `STRUCT_TESTS`), so the new benchmark is protected automatically. `split=`/`how=` already work.
+4. `python -m plug.build_unlabeled_dataset` — it writes any missing `data/formatted/*.fasta` itself, and the sample is checked against every `data/formatted/*.fasta` (and, for `RESERVOIR=struct|both`, every structure in `STRUCT_TESTS`), so the new benchmark is protected automatically. `split=`/`how=` already work.
 
 
 ## TODO:
